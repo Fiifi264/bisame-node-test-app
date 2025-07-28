@@ -5,8 +5,15 @@ import { authRoutes } from "./routes/authRoute";
 import User from "./models/User";
 import { productRoute } from "./routes/productRoute";
 import rateLimit from "express-rate-limit";
+import dotenv from "dotenv";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { oauthRoutes } from "./routes/oauthRoute";
+import asyncHandler from "express-async-handler";
+import { isAuthenticated } from "./middlewares/isAuthenticated";
 
 export const app = express();
+dotenv.config();
 
 app.use(morgan("dev"));
 app.use(express.json());
@@ -21,6 +28,41 @@ app.use(
     message: "Too many requests from this IP, please try again later.",
   })
 );
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+    },
+    async (accessToken, refreshToken, profile: any, done) => {
+      // You can add DB logic here to save or fetch user
+      const googleUser = {
+        id: profile.id,
+        name: profile.displayName,
+        email: profile?.emails[0]?.value,
+      };
+
+      let user = await User.findOne({ email: googleUser.email });
+
+      if (!user) {
+        user = await User.create({
+          fullname: googleUser.name,
+          email: googleUser.email,
+          password: null,
+          role: "customer",
+          googleId: googleUser.id,
+        });
+      }
+
+      return done(null, user);
+    }
+  )
+);
+
+// Initialize Passport
+app.use(passport.initialize());
 
 const connectToDb = async () => {
   try {
@@ -43,7 +85,21 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth/google", oauthRoutes);
 app.use("/api/products", productRoute);
+
+app.get(
+  "/user",
+  isAuthenticated,
+  asyncHandler(async (req, res) => {
+    const user = req.user;
+
+    res
+      .status(200)
+      .json({ message: "User retrieved successfully", data: user });
+    return;
+  })
+);
 
 app.get("/users", async (req: Request, res: Response) => {
   const users = await User.find();

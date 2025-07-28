@@ -8,8 +8,10 @@ const router = express.Router();
 router.get(
   "/",
   asyncHandler(async (req: Request, res: Response) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page =
+      typeof req.query.page === "string" ? parseInt(req.query.page) : 1;
+    const limit =
+      typeof req.query.limit === "string" ? parseInt(req.query.limit) : 10;
 
     const skip = (page - 1) * limit;
 
